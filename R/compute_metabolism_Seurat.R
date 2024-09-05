@@ -10,7 +10,7 @@
 
 sc.metabolism.Seurat <- function(obj, method = "VISION", imputation = F, ncores = 2, metabolism.type = "KEGG") {
 
-  countexp<-obj@assays$RNA@counts
+  countexp<-obj@assays$RNA$counts
 
   countexp<-data.frame(as.matrix(countexp))
 
