@@ -1,9 +1,9 @@
 Package: scMetabolism
 Type: Package
 Title: Quantifying the single-cell metabolism activity
-Version: 0.2.1
+Version: 0.2.2
 Author: Qiang Gao <gaoqiang@fudan.edu.cn>
-Maintainer: Yingcheng Wu <wuyc@mail.com>
+Maintainer: Gavin <otnw_bsj@163.com>
 Description: scMetabolism aims to quantify the metabolic activity at the single cell resolution.
     Use four spaces when indenting paragraphs within the Description.
 License: GPL-3
@@ -14,4 +14,4 @@ Imports: data.table, wesanderson, Seurat, VISION, AUCell, GSEABase,
 Suggests: testthat
 RoxygenNote: 7.1.1
 NeedsCompilation: no
-Packaged: 2021-01-31 12:31:32 UTC; wuyingcheng
+Packaged: 2021-01-31 12:31:32 UTC; Gavin

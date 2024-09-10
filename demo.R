@@ -7,6 +7,155 @@ library(GSEABase)
 library(GSVA)
 library(Seurat)
 
+
+#########definition
+# 使用diffData 和 diffDotPlot函数来构建代谢上调下调的点图
+diffData <- function(obj, pathway, phenotype, norm = "y"){
+  input.norm = norm
+  input.pathway <- pathway
+  input.parameter<-phenotype
+
+  metadata<-obj@meta.data
+  metabolism.matrix <- obj@assays$METABOLISM$score
+
+  cat("\nPlease Cite: \nYingcheng Wu, Qiang Gao, et al. Cancer Discovery. 2021. \nhttps://pubmed.ncbi.nlm.nih.gov/34417225/   \n\n")
+
+
+  metadata[,input.parameter]<-as.character(metadata[,input.parameter])
+  metabolism.matrix_sub<-t(metabolism.matrix[input.pathway,])
+
+  #arrange large table
+  gg_table<-c()
+  for (i in 1:length(input.pathway)){
+    gg_table<-rbind(gg_table, cbind(metadata[,input.parameter], input.pathway[i], metabolism.matrix_sub[,i]))
+  }
+  gg_table<-data.frame(gg_table)
+
+  #get median value
+  gg_table_median<-c()
+  input.group.x<-unique(as.character(gg_table[,1]))
+  input.group.y<-unique(as.character(gg_table[,2]))
+
+
+  for (x in 1:length(input.group.x)){
+    for (y in 1:length(input.group.y)){
+      gg_table_sub<-subset(gg_table, gg_table[,1] == input.group.x[x] & gg_table[,2] == input.group.y[y])
+      gg_table_median<-rbind(gg_table_median, cbind(input.group.x[x], input.group.y[y], median(as.numeric(as.character(gg_table_sub[,3])))))
+
+    }
+  }
+  gg_table_median<-data.frame(gg_table_median)
+  gg_table_median[,3]<-as.numeric(as.character(gg_table_median[,3]))
+
+
+  #normalize
+  gg_table_median_norm<-c()
+  input.group.x<-unique(as.character(gg_table[,1]))
+  input.group.y<-unique(as.character(gg_table[,2]))
+
+
+  range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
+  if (input.norm == "y")
+    for (y in 1:length(input.group.y)){
+      gg_table_median_sub<-subset(gg_table_median, gg_table_median[,2] == input.group.y[y])
+      norm_value<- range01(as.numeric(as.character(gg_table_median_sub[,3])))
+      gg_table_median_sub[,3]<-norm_value
+      gg_table_median_norm<-rbind(gg_table_median_norm, gg_table_median_sub)
+    }
+
+  if (input.norm == "x")
+    for (x in 1:length(input.group.x)){
+      gg_table_median_sub<-subset(gg_table_median, gg_table_median[,1] == input.group.x[x])
+      norm_value<- range01(as.numeric(as.character(gg_table_median_sub[,3])))
+      gg_table_median_sub[,3]<-norm_value
+      gg_table_median_norm<-rbind(gg_table_median_norm, gg_table_median_sub)
+    }
+
+  if (input.norm == "na") gg_table_median_norm<-gg_table_median
+
+
+  gg_table_median_norm<-data.frame(gg_table_median_norm)
+  gg_table_median_norm[,3]<-as.numeric(as.character(gg_table_median_norm[,3]))
+
+  gg_table_median_norm
+}
+
+diffDotPlot <- function(gg_table_median_norm, title) {
+  library(wesanderson)
+  pal <- wes_palette("Zissou1", 100, type = "continuous")
+  ggplot(data=gg_table_median_norm, aes(x=gg_table_median_norm[,1], y=gg_table_median_norm[,2], color = gg_table_median_norm[,3])) +
+    geom_point(data=gg_table_median_norm, aes(size = gg_table_median_norm[,3])) + #geom_line() +
+    #theme_bw()+theme(aspect.ratio=0.5, axis.text.x = element_text(angle = 45, hjust = 1)) +
+    ylab("Metabolic Pathway")+ xlab('celltypes') + labs(title = title) +
+    theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1), #aspect.ratio=1,
+                     panel.grid.minor = element_blank(), panel.grid.major = element_blank()) +
+    scale_color_gradientn(colors = c("blue", "white", "red"), limits = c(-1, 1)) +
+    labs(color = "Value", size = "Value") +
+    #facet_wrap(~tissueunique, ncol = 1) +
+    #theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    NULL
+}
+
+
+# 联合箱线图 jointBoxPlot
+jointBoxPlot <- function(obj_list, pathway, phenotype, ncol = 1, title = 'Metabolic DotPlot'){
+  # gg_table_list
+  gg_table_df <- data.frame()
+  for (obj in obj_list){
+    input.pathway<-pathway
+    input.parameter<-phenotype
+
+    cat("\nPlease Cite: \nYingcheng Wu, Qiang Gao, et al. Cancer Discovery. 2021. \nhttps://pubmed.ncbi.nlm.nih.gov/34417225/   \n\n")
+
+    metadata <-obj@meta.data
+    metabolism.matrix <- obj@assays$METABOLISM$score
+
+    metadata[,input.parameter]<-as.character(metadata[,input.parameter])
+    metabolism.matrix_sub<-t(metabolism.matrix[input.pathway,])
+
+    #arrange large table
+    gg_table<-c()
+    for (i in 1:length(input.pathway)){
+      gg_table<-rbind(gg_table, cbind(metadata[,input.parameter], input.pathway[i], metabolism.matrix_sub[,i]))
+    }
+    # 修改gg_table, 增加sample_origin列
+    gg_table<-data.frame(gg_table)
+    gg_table$sample_origin <- unique(obj$sample_origin)
+    gg_table[,3]<-as.numeric(as.character(gg_table[,3]))
+    
+    gg_table_df <- rbind(gg_table_df, gg_table)
+  }
+
+  # 合并两个dataframe
+  print(gg_table_df[1:4,])
+  print(unique(gg_table_df[,4]))
+
+  # 长度
+  print(length(gg_table_df))
+  print(nrow(gg_table_df))
+  print(ncol(gg_table_df))
+
+  library(wesanderson)
+  pal <- wes_palette("Zissou1", 100, type = "continuous")
+  ggplot(data=gg_table_df, aes(x=gg_table_df[,1], y=gg_table_df[,3], fill = gg_table_df[,4])) +
+    geom_boxplot(outlier.shape=NA)+
+    ylab("Metabolic Pathway")+
+    xlab(input.parameter)+
+    labs(title = title, hjust = 0.5) +
+    theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1), #aspect.ratio=1,
+                     panel.grid.minor = element_blank(), panel.grid.major = element_blank(),
+                     plot.title = element_text(hjust = 0.5)) +
+    # scale_color_gradientn(colours = pal) +
+    facet_wrap(~gg_table_df[,2], ncol = ncol, scales = "free") +
+    labs(fill = 'Group') +
+    #theme_bw()+theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+
+    NULL
+}
+
+
+############ callable
 # read sce data
 sce <- readRDS(sprintf("%s/sce_Annotation.RDS", codeDataDirR))
 
@@ -21,8 +170,8 @@ young_sce <- subset(sce, sample_origin == 'young')
 old_sce <- subset(sce, sample_origin == 'old')
 
 # ======== 设置sub_set
-sub_sce <- young_sce
-sample <- 'young'
+# sub_sce <- young_sce
+# sample <- 'young'
 
 # 1. 使用sce的counts来计算代谢通路的评分
 young_metabolism <- sc.metabolism.Seurat(young_sce, method = "AUCell", imputation = F, ncores = 2, metabolism.type = "KEGG")
@@ -81,78 +230,81 @@ metabolism_types <- list(
 metabolizes <- names(metabolism_types)
 
 # 2. visualize
-##DimPlot
-for(m in metabolizes){
-  # 创建对应代谢图片目录
-  metabolize_path <- file.path('metabolizes', sample, m)
-  if(!dir.exists(metabolize_path)){
-    dir.create(metabolize_path, recursive = T)
-  }
-  for(pathway in metabolism_types[[m]]){
-    # 图片的路径
-    if(pathway == "Glycolysis / Gluconeogenesis"){
-      p_path <- file.path(metabolize_path, sprintf("%s%s", "Glycolysis - Gluconeogenesis", '.png'))
-    }else{
-      p_path <- file.path(metabolize_path, sprintf("%s%s", pathway, '.png'))
-    }
-    # 做代谢的DimPlot
-    print(p_path)
-    p <- DimPlot.metabolism(sub_sce, pathway = pathway, dimention.reduction.type = "umap", dimention.reduction.run = F, size = 1)
-    ggsave(p_path, p)
-  }
-}
+##2.1 DimPlot 绘制umap图
+# for(m in metabolizes){
+#   # 创建对应代谢图片目录
+#   metabolize_path <- file.path('metabolizes', sample, m)
+#   if(!dir.exists(metabolize_path)){
+#     dir.create(metabolize_path, recursive = T)
+#   }
+#   for(pathway in metabolism_types[[m]]){
+#     # 图片的路径
+#     if(pathway == "Glycolysis / Gluconeogenesis"){
+#       p_path <- file.path(metabolize_path, sprintf("%s%s", "Glycolysis - Gluconeogenesis", '.png'))
+#     }else{
+#       p_path <- file.path(metabolize_path, sprintf("%s%s", pathway, '.png'))
+#     }
+#     # 做代谢的DimPlot
+#     print(p_path)
+#     p <- DimPlot.metabolism(young_metabolism, pathway = pathway, dimention.reduction.type = "umap", dimention.reduction.run = F, size = 1)
+#     ggsave(p_path, p)
+#   }
+# }
 
-##DotPlot&BoxPlot
+##2.3 DotPlot&BoxPlot（基础BoxPlot和DotPlot的Demo，可作为参考）
 ###young
-for(m in metabolizes){
-    # 创建对应代谢图片目录
-    pathways <- unlist(metabolism_types[m])
-    # # DotPlot
-    p_path <- file.path('metabolizes', 'young', sprintf("%s%s%s", m, '-DotPlot', '.png'))
-    p <- DotPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", norm = "y", title = m)
-    ggsave(p_path, p)
-    # BoxPlot
-    p_path <- file.path('metabolizes', 'young', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
-    p <- BoxPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = m)
-    ggsave(p_path, p, height = length(pathways) / 4 * 4, width = 16)
-}
-###old
-for(m in metabolizes){
-    # 创建对应代谢图片目录
-    pathways <- unlist(metabolism_types[m])
-    # DotPlot
-    p_path <- file.path('metabolizes', 'old', sprintf("%s%s%s", m, '-DotPlot', '.png'))
-    p <- DotPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", norm = "y", title = m)
-    ggsave(p_path, p)
-    # BoxPlot
-    p_path <- file.path('metabolizes', 'old', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
-    p <- BoxPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = m)
-    ggsave(p_path, p, height = length(pathways) / 4 * 4, width = 16)
-}
-### young/old
-for(m in metabolizes){
-    # 创建对应代谢图片目录
-    pathways <- unlist(metabolism_types[m])
-    # BoxPlot
-    p_path <- file.path('metabolizes', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
-    p1 <- BoxPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = sprintf('%s - %s', 'Young', m))
-    p2 <- BoxPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = sprintf('%s - %s', 'Old', m))
-    
-    # 判断一下，组织图片的方式
-    # 处理宽高占比
-    if(length(pathways) > 8){
-      p <- p1 + p2
-      height <- length(pathways) / 4 * 4
-      width <- 32
-    }else{
-      p <- p1 / p2
-      height <- length(pathways) / 4 * 4 * 2
-      width <- 16
-    }
-    ggsave(p_path, p, height = height, width = width)
-}
+# for(m in metabolizes){
+#     # 创建对应代谢图片目录
+#     pathways <- unlist(metabolism_types[m])
+#     # # DotPlot
+#     p_path <- file.path('metabolizes', 'young', sprintf("%s%s%s", m, '-DotPlot', '.png'))
+#     p <- DotPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", norm = "y", title = m)
+#     ggsave(p_path, p)
+#     # BoxPlot
+#     p_path <- file.path('metabolizes', 'young', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
+#     p <- BoxPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = m)
+#     ggsave(p_path, p, height = length(pathways) / 4 * 4, width = 16)
+# }
 
-# diffDotPlot & Combined DotPlot
+# ###old
+# for(m in metabolizes){
+#     # 创建对应代谢图片目录
+#     pathways <- unlist(metabolism_types[m])
+#     # DotPlot
+#     p_path <- file.path('metabolizes', 'old', sprintf("%s%s%s", m, '-DotPlot', '.png'))
+#     p <- DotPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", norm = "y", title = m)
+#     ggsave(p_path, p)
+#     # BoxPlot
+#     p_path <- file.path('metabolizes', 'old', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
+#     p <- BoxPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = m)
+#     ggsave(p_path, p, height = length(pathways) / 4 * 4, width = 16)
+# }
+
+## 2.4 StackedBoxPlot（迭代产物，不用于生产，可Delete）
+### young/old
+# for(m in metabolizes){
+#     # 创建对应代谢图片目录
+#     pathways <- unlist(metabolism_types[m])
+#     # BoxPlot
+#     p_path <- file.path('metabolizes', sprintf("%s%s%s", m, '-BoxPlot', '.png'))
+#     p1 <- BoxPlot.metabolism(obj = old_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = sprintf('%s - %s', 'Young', m))
+#     p2 <- BoxPlot.metabolism(obj = young_metabolism, pathway = pathways, phenotype = "celltypes", ncol = 4, title = sprintf('%s - %s', 'Old', m))
+    
+#     # 判断一下，组织图片的方式
+#     # 处理宽高占比
+#     if(length(pathways) > 8){
+#       p <- p1 + p2
+#       height <- length(pathways) / 4 * 4
+#       width <- 32
+#     }else{
+#       p <- p1 / p2
+#       height <- length(pathways) / 4 * 4 * 2
+#       width <- 16
+#     }
+#     ggsave(p_path, p, height = height, width = width)
+# }
+
+##2.5 diffDotPlot & Combined DotPlot （用于生产环境的DotPlot）
 for(m in metabolizes){
     # 创建对应代谢图片目录
     pathways <- unlist(metabolism_types[m])
@@ -187,4 +339,46 @@ for(m in metabolizes){
     combined_path <- file.path('metabolizes', sprintf("%s%s%s", m, 'Combined-DotPlot', '.png'))
     ggsave(combined_path, p, width = 24, height = 8)
 
+}
+
+
+obj_list <- list(young_metabolism, old_metabolism)
+# 2.6 Combined Box Plot（联合箱线图）
+
+##2.6.1 SplitedBoxPlot（单张的BoxPlot）
+# for(m in metabolizes){
+#   pathways <- unlist(metabolism_types[m])
+#   for(pathway in pathways){
+#     p <- jointBoxPlot(obj_list = obj_list, pathway = pathway, phenotype = "celltypes", title = 'BoxPlot')
+#     # 图片的路径
+#     if(pathway == "Glycolysis / Gluconeogenesis"){
+#       p_path <- file.path('metabolizes', m, sprintf("%s%s", "Glycolysis - Gluconeogenesis", '.png'))
+#     }else{
+#       p_path <- file.path('metabolizes', m, sprintf("%s%s", pathway, '.png'))
+#     }
+#     # 保存图片
+#     ggsave(p_path, p, height = 8, width = 8)
+#   }
+# }
+
+##2.6.2 StackedBoxPlot（堆叠的BoxPlot）
+for(m in metabolizes){
+  pathways <- unlist(metabolism_types[m])
+  p <- jointBoxPlot(obj_list = obj_list, pathway = pathways, phenotype = "celltypes", title = 'BoxPlot', ncol = 4)
+  # 图片的路径
+  if(pathway == "Glycolysis / Gluconeogenesis"){
+    p_path <- file.path('metabolizes', sprintf("%s%s", m, '-CombinedBox.png'))
+  } else {
+    p_path <- file.path('metabolizes', sprintf("%s%s", m, '-CombinedBox.png'))
+  }
+  # 处理宽高占比
+  # 处理图片
+  if(length(pathways) > 8){
+    height <- length(pathways) / 4 * 8
+    width <- 32
+  }else{
+    height <- length(pathways) / 4 * 4 * 3
+    width <- 24
+  }
+  ggsave(p_path, p, height = height, width = width)
 }
